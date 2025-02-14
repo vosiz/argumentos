@@ -6,15 +6,15 @@ Auto-processes arguments, simple interface to setup.
 ## Usage
 Use namespace **Argumentos**. Implicetly or by including via "using";
 
-Steps are:
+Basic steps are:
 1) Creating primary instance
 2) (Optional) Create, describe and add command
 3) Process
 4) Get argument value or check existance
 
-More examples in ArgsTesting project.
+More examples at [Source](https://github.com/vosiz/argumentos)
 
-### Simplistic example
+### Basic example
 ```csharp
 // create primary instnace
 var ar = new Argumentos.Args(args);
@@ -30,3 +30,4 @@ ar.Process();
 
 // get value by key
 var value = ar.GetArgument<string>("input");
+```
