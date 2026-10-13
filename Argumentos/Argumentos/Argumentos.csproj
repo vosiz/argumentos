@@ -7,7 +7,9 @@
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <Version>1.0.1</Version>
+    <Version>1.0.2</Version>
+    <AssemblyVersion>1.0.2.0</AssemblyVersion>
+    <FileVersion>1.0.2.0</FileVersion>
     <Description>Program arguments (command-line args) processing library.</Description>
     <PackageProjectUrl>https://github.com/vosiz/argumentos</PackageProjectUrl>
     <RepositoryUrl>https://github.com/vosiz/argumentos</RepositoryUrl>
