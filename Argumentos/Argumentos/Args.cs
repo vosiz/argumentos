@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -68,17 +69,15 @@ namespace Argumentos
                     }
 
                     // is argument ID or value
-                    if (IsArg(a, ArgIdChars.ToArray()))
+                    if (IsArg(a, ArgIdChars.ToArray()) && !IsNumber(a))
                     {
                         // last is not null -> last is argument without value
-                        Arguments.Add(
-                            StripArg(last, ArgIdChars.ToArray()), "1");
+                        AddArgument(last, "1");
                         last = a;
                     }
                     else { // value
 
-                        Arguments.Add(
-                            StripArg(last, ArgIdChars.ToArray()), a);
+                        AddArgument(last, a);
                         last = null;
                     }
                 }
@@ -86,8 +85,7 @@ namespace Argumentos
                 if (last != null) {
 
                     // last argument was not processed (single element, no value)
-                    Arguments.Add(
-                        StripArg(last, ArgIdChars.ToArray()), "1");
+                    AddArgument(last, "1");
                 }
 
                 // check commands (if required)
@@ -134,35 +132,65 @@ namespace Argumentos
 
         public bool HasArgument(string id) {
 
+            CheckProcessed();
+
             id = StripArg(id, ArgIdChars.ToArray());
 
             return Arguments.ContainsKey(id);
         }
 
-        public T GetArgument<T>(string id) where T : class
+        public T GetArgument<T>(string id)
         {
-            if (Arguments.TryGetValue(id, out string value))
+
+            CheckProcessed();
+
+            id = StripArg(id, ArgIdChars.ToArray());
+
+            if (!Arguments.TryGetValue(id, out string value))
+                return default(T);
+
+            if (typeof(T) == typeof(string))
+                return (T)(object)value;
+
+            if (typeof(T) == typeof(bool))
             {
-                try
-                {
-                    if (typeof(T) == typeof(bool) && bool.TryParse(value, out bool b))
-                        return (T)(object)b;
 
-                    if (typeof(T) == typeof(int) && int.TryParse(value, out int i))
-                        return (T)(object)i;
+                // argument without value is stored as "1"
+                if (value == "1")
+                    return (T)(object)true;
 
-                    if (typeof(T) == typeof(float) && float.TryParse(value, out float f))
-                        return (T)(object)f;
+                if (value == "0")
+                    return (T)(object)false;
 
-                    return (T)(object)value; // string
-                }
-                catch
-                {
-                    return null; // error in conversion?
-                }
+                if (bool.TryParse(value, out bool b))
+                    return (T)(object)b;
             }
 
-            return null;
+            if (typeof(T) == typeof(int) && int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int i))
+                return (T)(object)i;
+
+            if (typeof(T) == typeof(float) && float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out float f))
+                return (T)(object)f;
+
+            throw new ArgsException($"Argument \"{id}\" has value \"{value}\" which cannot be read as {typeof(T).Name}");
+        }
+
+        private void CheckProcessed()
+        {
+
+            if (Arguments == null)
+                throw new ArgsException("Arguments were not processed yet, call Process() first");
+        }
+
+        private void AddArgument(string argument, string value)
+        {
+
+            string name = StripArg(argument, ArgIdChars.ToArray());
+
+            if (Arguments.ContainsKey(name))
+                throw new ArgsException($"Argument \"{name}\" is defined more than once");
+
+            Arguments.Add(name, value);
         }
 
         private bool IsArg(string argument, string[] arg_chars)
@@ -178,13 +206,30 @@ namespace Argumentos
             return false;
         }
 
+        private bool IsNumber(string argument)
+        {
+
+            return double.TryParse(argument, NumberStyles.Float, CultureInfo.InvariantCulture, out double number);
+        }
+
         private string StripArg(string argument, string[] arg_chars)
         {
 
-            foreach (var s in arg_chars)
+            bool stripped = true;
+            while (stripped)
             {
 
-                argument = argument.Replace(s, "");
+                stripped = false;
+                foreach (var s in arg_chars)
+                {
+
+                    if (s.Length > 0 && argument.StartsWith(s, StringComparison.Ordinal))
+                    {
+
+                        argument = argument.Substring(s.Length);
+                        stripped = true;
+                    }
+                }
             }
 
             return argument;
