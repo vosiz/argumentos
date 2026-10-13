@@ -32,7 +32,7 @@ namespace Argumentos
 
             var output = Args.NewRow(
                 string.Format("- {2}{0} - {1}", 
-                Name, Description, Required ? "" : "(optonal)")
+                Name, Description, Required ? "" : "(optional) ")
             );
 
             if (ArgsDesc.Count > 0) {

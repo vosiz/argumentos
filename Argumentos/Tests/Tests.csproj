@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Argumentos\Argumentos.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CzappLib" Version="1.7.0" />
+    <PackageReference Include="Vosiz.UtilsLib" Version="2.6.1" />
+  </ItemGroup>
+
+</Project>
