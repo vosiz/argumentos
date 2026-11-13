@@ -11,6 +11,7 @@ namespace Argumentos
 
         public string Name { get; private set; }
         public bool Required { get; private set; }
+        public bool IsFlag { get; private set; }
 
         string Description;
         Dictionary<string, string> ArgsDesc;
@@ -26,6 +27,21 @@ namespace Argumentos
         public void AddArgumentValueDesc(string argument, string desc) {
 
             ArgsDesc.Add(argument, desc);
+        }
+
+        public void SetFlag(bool flag = true) {
+
+            IsFlag = flag;
+        }
+
+        public bool AcceptsValue(string value, bool ignore_case = false) {
+
+            if (ArgsDesc.Count == 0)
+                return true;
+
+            StringComparison comparison = ignore_case ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+
+            return ArgsDesc.Keys.Any(k => string.Equals(k, value, comparison));
         }
 
         public string PrintHelp() {

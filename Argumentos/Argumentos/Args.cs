@@ -11,23 +11,25 @@ namespace Argumentos
     public class Args
     {
         List<string> RawArguments;
-        Dictionary<string, string> Arguments;
+        Dictionary<string, List<string>> Arguments;
+        List<string> Positional;
         List<string> ArgIdChars;
         List<Command> RegisteredCommands;
         string Description = "Program has no defined description";
+        bool StrictMode = false;
+        bool IgnoreCase = false;
 
-        public Args(string[] args, char[] arg_chars = null) : 
+        public Args(string[] args, char[] arg_chars = null) :
             this(
-                args, 
-                (arg_chars ?? new char[] { '/', '-' }).Select(c => c.ToString()).ToArray())
-        { }
+                args,
+                (arg_chars == null) ? null : arg_chars.Select(c => c.ToString()).ToArray()) { }
 
         public Args(string[] args, string[] args_strings) {
 
             ArgIdChars = new List<string>();
             if (args_strings == null)
             {
-                args_strings = new string[] { "-", "/" };
+                args_strings = new string[] { "--", "-", "/" };
             }
             ArgIdChars.AddRange(args_strings);
 
@@ -58,34 +60,35 @@ namespace Argumentos
             try
             {
                 // pair arguments and values
-                Arguments = new Dictionary<string, string>();
-                string last = null;
+                StringComparer comparer = IgnoreCase ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
+                Arguments = new Dictionary<string, List<string>>(comparer);
+                Positional = new List<string>();
+                List<string> values = null;
+                bool options_ended = false;
                 foreach (var a in RawArguments)
                 {
-                    if (last == null) { // argument
-
-                        last = a;
+                    if (options_ended)
+                    {
+                        Positional.Add(a);
                         continue;
                     }
 
-                    // is argument ID or value
-                    if (IsArg(a, ArgIdChars.ToArray()) && !IsNumber(a))
+                    if (a == "--")
                     {
-                        // last is not null -> last is argument without value
-                        AddArgument(last, "1");
-                        last = a;
+                        options_ended = true;
+                        continue;
                     }
-                    else { // value
 
-                        AddArgument(last, a);
-                        last = null;
+                    if (ParseCommand(a, out string name, out string value))
+                    {
+                        values = AddArgument(name, value);
+                        continue;
                     }
-                }
 
-                if (last != null) {
-
-                    // last argument was not processed (single element, no value)
-                    AddArgument(last, "1");
+                    if (values == null)
+                        Positional.Add(a);
+                    else
+                        values.Add(a);
                 }
 
                 // check commands (if required)
@@ -98,6 +101,8 @@ namespace Argumentos
                     }
                 }
 
+                if (StrictMode)
+                    CheckStrict();
             }
             catch (ArgsException exc)
             {
@@ -112,6 +117,16 @@ namespace Argumentos
         public void AddDescription(string desc) {
 
             Description = desc;
+        }
+
+        public void SetStrictMode(bool strict = true) {
+
+            StrictMode = strict;
+        }
+
+        public void SetIgnoreCase(bool ignore = true) {
+
+            IgnoreCase = ignore;
         }
 
         public string PrintHelp() {
@@ -146,8 +161,11 @@ namespace Argumentos
 
             id = StripArg(id, ArgIdChars.ToArray());
 
-            if (!Arguments.TryGetValue(id, out string value))
+            if (!Arguments.TryGetValue(id, out List<string> values))
                 return default(T);
+
+            // argument without value reads as "1"
+            string value = (values.Count == 0) ? "1" : values[0];
 
             if (typeof(T) == typeof(string))
                 return (T)(object)value;
@@ -155,7 +173,6 @@ namespace Argumentos
             if (typeof(T) == typeof(bool))
             {
 
-                // argument without value is stored as "1"
                 if (value == "1")
                     return (T)(object)true;
 
@@ -175,6 +192,27 @@ namespace Argumentos
             throw new ArgsException($"Argument \"{id}\" has value \"{value}\" which cannot be read as {typeof(T).Name}");
         }
 
+        public List<string> GetValues(string id)
+        {
+
+            CheckProcessed();
+
+            id = StripArg(id, ArgIdChars.ToArray());
+
+            if (!Arguments.TryGetValue(id, out List<string> values))
+                return new List<string>();
+
+            return new List<string>(values);
+        }
+
+        public List<string> GetPositional()
+        {
+
+            CheckProcessed();
+
+            return new List<string>(Positional);
+        }
+
         private void CheckProcessed()
         {
 
@@ -182,15 +220,74 @@ namespace Argumentos
                 throw new ArgsException("Arguments were not processed yet, call Process() first");
         }
 
-        private void AddArgument(string argument, string value)
+        private void CheckStrict()
         {
 
-            string name = StripArg(argument, ArgIdChars.ToArray());
+            foreach (var argument in Arguments)
+            {
 
-            if (Arguments.ContainsKey(name))
+                Command cmd = FindCommand(argument.Key);
+                if (cmd == null)
+                    throw new ArgsException($"Argument \"{argument.Key}\" is not a known command");
+
+                foreach (var value in argument.Value)
+                {
+
+                    if (!cmd.AcceptsValue(value, IgnoreCase))
+                        throw new ArgsException($"Argument \"{argument.Key}\" does not accept value \"{value}\"");
+                }
+            }
+        }
+
+        private Command FindCommand(string name)
+        {
+
+            StringComparison comparison = IgnoreCase ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+
+            return RegisteredCommands.FirstOrDefault(c => string.Equals(c.Name, name, comparison));
+        }
+
+        // Returns null when the command is a flag
+        private List<string> AddArgument(string name, string value)
+        {
+
+            if (StrictMode && Arguments.ContainsKey(name))
                 throw new ArgsException($"Argument \"{name}\" is defined more than once");
 
-            Arguments.Add(name, value);
+            if (!Arguments.ContainsKey(name))
+                Arguments.Add(name, new List<string>());
+
+            List<string> values = Arguments[name];
+            if (value != null)
+                values.Add(value);
+
+            Command cmd = FindCommand(name);
+            if (cmd != null && cmd.IsFlag)
+                return null;
+
+            return values;
+        }
+
+        // Value only for the name=value form
+        private bool ParseCommand(string token, out string name, out string value)
+        {
+
+            name = null;
+            value = null;
+
+            if (!IsArg(token, ArgIdChars.ToArray()) || IsNumber(token))
+                return false;
+
+            name = StripArg(token, ArgIdChars.ToArray());
+
+            int separator = name.IndexOfAny(new char[] { '=', ':' });
+            if (separator >= 0)
+            {
+                value = name.Substring(separator + 1);
+                name = name.Substring(0, separator);
+            }
+
+            return name.Length > 0;
         }
 
         private bool IsArg(string argument, string[] arg_chars)

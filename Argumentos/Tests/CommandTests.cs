@@ -6,6 +6,22 @@ namespace Tests
     public static class CommandTests
     {
 
+        public static void AcceptsAnyValueWhenNoneDocumented() {
+
+            Command cmd = new Command("input", "Input file path");
+
+            Check.True(cmd.AcceptsValue("anything"));
+        }
+
+        public static void AcceptsOnlyDocumentedValues() {
+
+            Command cmd = new Command("log", "Logging level");
+            cmd.AddArgumentValueDesc("warning", "Only warnings and up");
+
+            Check.True(cmd.AcceptsValue("warning"));
+            Check.False(cmd.AcceptsValue("verbose"));
+        }
+
         public static void PrintHelpLeavesRequiredCommandUnmarked() {
 
             Command cmd = new Command("input", "Input file path", true);
