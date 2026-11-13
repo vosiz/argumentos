@@ -1,33 +1,35 @@
 # Argumentos
-A command line arguments processing tool.
+Small .NET Standard 2.0 library for reading command-line arguments — works in .NET Framework 4.6.1+ and .NET Core / .NET 5+.
 
-Auto-processes arguments, simple interface to setup.
+Pairs commands with their values, checks the required ones, can refuse anything it does not know and builds a help screen.
 
-## Usage
-Use namespace **Argumentos**. Implicetly or by including via "using";
+## Features
+- `--command`, `-command` and `/command` out of the box, or own prefixes
+- A command with any number of values after it, or `--log=warning` / `/log:warning`
+- Flags, positional arguments and `--` as the end of options
+- Required commands and documented values; add, remove or replace commands
+- Optional strict mode (throws on unknown commands and values) and case-insensitive names
+- Typed reads (string, bool, int, long, float, double) and a generated help screen
 
-Basic steps are:
-1) Creating primary instance
-2) (Optional) Create, describe and add command
-3) Process
-4) Get argument value or check existance
-
-More examples at [Source](https://github.com/vosiz/argumentos)
-
-### Basic example
+## Basic example
 ```csharp
-// create primary instnace
 var ar = new Argumentos.Args(args);
 
-// create recognized command in arguments
-var cmd_input_file = new Argumentos.Command("input", "Input file path");
+var cmd_log = new Argumentos.Command("log", "Logging level");
+cmd_log.AddArgumentValueDesc("warning", "Log only warning and up events");
+cmd_log.AddArgumentValueDesc("error", "Log only errors");
+ar.AddCommand(cmd_log);
 
-// add command to main instance
-ar.AddCommand(cmd_input_file);
+var cmd_verbose = new Argumentos.Command("verbose", "Prints more details");
+cmd_verbose.SetFlag();
+ar.AddCommand(cmd_verbose);
 
-// ready to process args
+ar.SetStrictMode();
 ar.Process();
 
-// get value by key
-var value = ar.GetArgument<string>("input");
+string log = ar.GetArgument<string>("log");
+bool verbose = ar.GetArgument<bool>("verbose");
+List<string> files = ar.GetPositional();
 ```
+
+Full documentation and sources at [GitHub](https://github.com/vosiz/argumentos).

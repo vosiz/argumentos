@@ -1,8 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Argumentos
 {
@@ -11,6 +9,7 @@ namespace Argumentos
 
         public string Name { get; private set; }
         public bool Required { get; private set; }
+        public bool IsFlag { get; private set; }
 
         string Description;
         Dictionary<string, string> ArgsDesc;
@@ -25,23 +24,38 @@ namespace Argumentos
 
         public void AddArgumentValueDesc(string argument, string desc) {
 
+            if (ArgsDesc.ContainsKey(argument))
+                throw new ArgsException($"Value \"{argument}\" is already documented for command \"{Name}\"");
+
             ArgsDesc.Add(argument, desc);
         }
 
-        public string PrintHelp() {
+        public void SetFlag(bool flag = true) {
 
-            var output = Args.NewRow(
-                string.Format("- {2}{0} - {1}", 
-                Name, Description, Required ? "" : "(optional) ")
-            );
+            IsFlag = flag;
+        }
+
+        public bool AcceptsValue(string value, bool ignore_case = false) {
+
+            if (ArgsDesc.Count == 0)
+                return true;
+
+            StringComparison comparison = ignore_case ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+
+            return ArgsDesc.Keys.Any(k => string.Equals(k, value, comparison));
+        }
+
+        public string GetHelp(string shown_name = null) {
+
+            string output =
+                string.Format("  {0}{1} - {2}{3}", shown_name ?? Name, Required ? "" : " (optional)", Description, Environment.NewLine);
 
             if (ArgsDesc.Count > 0) {
 
-                // i know... i am lazy to look up the formating...
-                output += Args.NewRow("     Recognized values:");
+                output += "      Recognized values:" + Environment.NewLine;
                 foreach (var argsdesc in ArgsDesc) {
 
-                    output += Args.NewRow(string.Format("     - {0} -> {1}", argsdesc.Key, argsdesc.Value));
+                    output += string.Format("      - {0} -> {1}{2}", argsdesc.Key, argsdesc.Value, Environment.NewLine);
                 }
             }
 
