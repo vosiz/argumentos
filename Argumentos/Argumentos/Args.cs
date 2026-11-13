@@ -2,14 +2,15 @@
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Argumentos
 {
 
     public class Args
     {
+        static readonly Type[] SUPPORTED_TYPES =
+            new Type[] { typeof(string), typeof(bool), typeof(int), typeof(long), typeof(float), typeof(double) };
+
         List<string> RawArguments;
         Dictionary<string, List<string>> Arguments;
         List<string> Positional;
@@ -19,40 +20,56 @@ namespace Argumentos
         bool StrictMode = false;
         bool IgnoreCase = false;
 
-        public Args(string[] args, char[] arg_chars = null) :
-            this(
-                args,
-                (arg_chars == null) ? null : arg_chars.Select(c => c.ToString()).ToArray()) { }
+        private static string NewRow(string row) {
 
-        public Args(string[] args, string[] args_strings) {
+            return row + Environment.NewLine;
+        }
+
+        public Args() : this(Environment.GetCommandLineArgs().Skip(1).ToArray()) { }
+
+        public Args(string[] args, string[] prefixes = null) {
 
             ArgIdChars = new List<string>();
-            if (args_strings == null)
+            if (prefixes == null)
             {
-                args_strings = new string[] { "--", "-", "/" };
+                prefixes = new string[] { "--", "-", "/" };
             }
-            ArgIdChars.AddRange(args_strings);
+            ArgIdChars.AddRange(prefixes);
 
-            RawArguments = new List<string>();
-            foreach (var a in args) {
-
-                // save raw
-                RawArguments.Add(a);
-            }
-
+            RawArguments = new List<string>(args ?? new string[0]);
             RegisteredCommands = new List<Command>();
         }
 
         public void AddCommand(Command cmd) {
 
-            try {
+            CheckCommand(cmd);
 
-                RegisteredCommands.Add(cmd);
+            if (FindCommand(cmd.Name) != null)
+                throw new ArgsException($"Command \"{cmd.Name}\" is already added");
 
-            } catch (Exception exc) {
+            RegisteredCommands.Add(cmd);
+        }
 
-                throw new ArgsException(exc.Message);
-            }
+        public bool RemoveCommand(string name) {
+
+            Command cmd = FindCommand(name);
+            if (cmd == null)
+                return false;
+
+            RegisteredCommands.Remove(cmd);
+
+            return true;
+        }
+
+        public void ReplaceCommand(Command cmd) {
+
+            CheckCommand(cmd);
+
+            int index = RegisteredCommands.IndexOf(FindCommand(cmd.Name));
+            if (index < 0)
+                throw new ArgsException($"Command \"{cmd.Name}\" is not added, nothing to replace");
+
+            RegisteredCommands[index] = cmd;
         }
 
         public void Process() {
@@ -60,8 +77,7 @@ namespace Argumentos
             try
             {
                 // pair arguments and values
-                StringComparer comparer = IgnoreCase ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
-                Arguments = new Dictionary<string, List<string>>(comparer);
+                Arguments = new Dictionary<string, List<string>>();
                 Positional = new List<string>();
                 List<string> values = null;
                 bool options_ended = false;
@@ -94,11 +110,8 @@ namespace Argumentos
                 // check commands (if required)
                 foreach (var cmd in RegisteredCommands) {
 
-                    if (!Arguments.ContainsKey(cmd.Name)) {
-
-                        if (cmd.Required)
-                            throw new ArgsException($"Required field \"{cmd.Name}\" is not present in arguments");
-                    }
+                    if (cmd.Required && !Arguments.ContainsKey(Normalize(cmd.Name)))
+                        throw new ArgsException($"Required field \"{cmd.Name}\" is not present in arguments");
                 }
 
                 if (StrictMode)
@@ -110,7 +123,7 @@ namespace Argumentos
             }
             catch (Exception exc)
             {
-                throw new ArgsException(exc.Message);
+                throw new ArgsException(exc.Message, exc);
             }
         }
 
@@ -129,7 +142,9 @@ namespace Argumentos
             IgnoreCase = ignore;
         }
 
-        public string PrintHelp() {
+        public string GetHelp() {
+
+            string prefix = ArgIdChars.FirstOrDefault() ?? "";
 
             string output = NewRow("This is auto-generated HELP");
             output += NewRow(Description);
@@ -138,18 +153,22 @@ namespace Argumentos
 
             foreach (var cmd in RegisteredCommands) {
 
-                output += cmd.PrintHelp();
+                output += cmd.GetHelp(prefix + StripPrefixes(cmd.Name));
             }
 
-
             return output;
+        }
+
+        public void PrintHelp() {
+
+            Console.Write(GetHelp());
         }
 
         public bool HasArgument(string id) {
 
             CheckProcessed();
 
-            id = StripArg(id, ArgIdChars.ToArray());
+            id = Normalize(id);
 
             return Arguments.ContainsKey(id);
         }
@@ -157,9 +176,12 @@ namespace Argumentos
         public T GetArgument<T>(string id)
         {
 
+            if (!SUPPORTED_TYPES.Contains(typeof(T)))
+                throw new ArgsException($"Type {typeof(T).Name} is not supported by GetArgument");
+
             CheckProcessed();
 
-            id = StripArg(id, ArgIdChars.ToArray());
+            id = Normalize(id);
 
             if (!Arguments.TryGetValue(id, out List<string> values))
                 return default(T);
@@ -186,8 +208,14 @@ namespace Argumentos
             if (typeof(T) == typeof(int) && int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int i))
                 return (T)(object)i;
 
+            if (typeof(T) == typeof(long) && long.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out long l))
+                return (T)(object)l;
+
             if (typeof(T) == typeof(float) && float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out float f))
                 return (T)(object)f;
+
+            if (typeof(T) == typeof(double) && double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out double d))
+                return (T)(object)d;
 
             throw new ArgsException($"Argument \"{id}\" has value \"{value}\" which cannot be read as {typeof(T).Name}");
         }
@@ -197,7 +225,7 @@ namespace Argumentos
 
             CheckProcessed();
 
-            id = StripArg(id, ArgIdChars.ToArray());
+            id = Normalize(id);
 
             if (!Arguments.TryGetValue(id, out List<string> values))
                 return new List<string>();
@@ -211,6 +239,13 @@ namespace Argumentos
             CheckProcessed();
 
             return new List<string>(Positional);
+        }
+
+        private void CheckCommand(Command cmd)
+        {
+
+            if (cmd == null)
+                throw new ArgsException("Command cannot be null");
         }
 
         private void CheckProcessed()
@@ -242,9 +277,9 @@ namespace Argumentos
         private Command FindCommand(string name)
         {
 
-            StringComparison comparison = IgnoreCase ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+            string key = Normalize(name);
 
-            return RegisteredCommands.FirstOrDefault(c => string.Equals(c.Name, name, comparison));
+            return RegisteredCommands.FirstOrDefault(c => Normalize(c.Name) == key);
         }
 
         // Returns null when the command is a flag
@@ -278,14 +313,14 @@ namespace Argumentos
             if (!IsArg(token, ArgIdChars.ToArray()) || IsNumber(token))
                 return false;
 
-            name = StripArg(token, ArgIdChars.ToArray());
-
-            int separator = name.IndexOfAny(new char[] { '=', ':' });
+            int separator = token.IndexOfAny(new char[] { '=', ':' });
             if (separator >= 0)
             {
-                value = name.Substring(separator + 1);
-                name = name.Substring(0, separator);
+                value = token.Substring(separator + 1);
+                token = token.Substring(0, separator);
             }
+
+            name = Normalize(token);
 
             return name.Length > 0;
         }
@@ -296,7 +331,7 @@ namespace Argumentos
             foreach (var s in arg_chars)
             {
 
-                if (argument.StartsWith(s))
+                if (argument.StartsWith(s, StringComparison.Ordinal))
                     return true;
             }
 
@@ -309,7 +344,15 @@ namespace Argumentos
             return double.TryParse(argument, NumberStyles.Float, CultureInfo.InvariantCulture, out double number);
         }
 
-        private string StripArg(string argument, string[] arg_chars)
+        private string Normalize(string name)
+        {
+
+            name = StripPrefixes(name);
+
+            return IgnoreCase ? name.ToLowerInvariant() : name;
+        }
+
+        private string StripPrefixes(string name)
         {
 
             bool stripped = true;
@@ -317,24 +360,19 @@ namespace Argumentos
             {
 
                 stripped = false;
-                foreach (var s in arg_chars)
+                foreach (var s in ArgIdChars)
                 {
 
-                    if (s.Length > 0 && argument.StartsWith(s, StringComparison.Ordinal))
+                    if (s.Length > 0 && name.StartsWith(s, StringComparison.Ordinal))
                     {
 
-                        argument = argument.Substring(s.Length);
+                        name = name.Substring(s.Length);
                         stripped = true;
                     }
                 }
             }
 
-            return argument;
-        }
-
-        public static string NewRow(string row) {
-
-            return row + Environment.NewLine;
+            return name;
         }
     }
 }

@@ -1,3 +1,5 @@
+using System;
+using System.IO;
 using Argumentos;
 
 namespace Tests
@@ -110,7 +112,7 @@ namespace Tests
                 message = exc.Message;
             }
 
-            Check.Equal("ArgsExc: Argument \"i\" is defined more than once", message);
+            Check.Equal("Argument \"i\" is defined more than once", message);
         }
 
         public static void ProcessPairsArgumentWithValue() {
@@ -208,6 +210,168 @@ namespace Tests
             Check.Equal("warning", ar.GetArgument<string>("log"));
             Check.Equal("C:\\temp", ar.GetArgument<string>("path"));
             Check.Equal(-5, ar.GetArgument<int>("count"));
+        }
+
+        public static void ProcessMatchesCommandRegisteredWithPrefix() {
+
+            Command cmd_verbose = new Command("--verbose", "Verbose output", true);
+            cmd_verbose.SetFlag();
+
+            Args ar = new Args(new string[] { "/verbose", "input.txt" });
+            ar.AddCommand(cmd_verbose);
+            ar.SetStrictMode();
+            ar.Process();
+
+            Check.True(ar.HasArgument("verbose"));
+            Check.Equal("input.txt", string.Join("|", ar.GetPositional()));
+        }
+
+        public static void IgnoreCaseMatchesCommandRegisteredInUpperCase() {
+
+            Args ar = new Args(new string[] { "-input", "A.txt" });
+            ar.AddCommand(new Command("INPUT", "Input file path", true));
+            ar.SetIgnoreCase();
+            ar.SetStrictMode();
+            ar.Process();
+
+            Check.Equal("A.txt", ar.GetArgument<string>("Input"));
+        }
+
+        public static void AddCommandThrowsOnDuplicate() {
+
+            Args ar = new Args(new string[0]);
+            ar.AddCommand(new Command("log", "Logging level"));
+
+            Check.Throws<ArgsException>(() => ar.AddCommand(new Command("--log", "Log file path")));
+        }
+
+        public static void AddCommandThrowsOnNull() {
+
+            Args ar = new Args(new string[0]);
+
+            Check.Throws<ArgsException>(() => ar.AddCommand(null));
+        }
+
+        public static void RemoveCommandRemovesAddedCommand() {
+
+            Args ar = new Args(new string[] { "-debug" });
+            ar.AddCommand(new Command("debug", "Debug output"));
+            ar.SetStrictMode();
+
+            Check.True(ar.RemoveCommand("--debug"));
+            Check.False(ar.RemoveCommand("debug"));
+            Check.Throws<ArgsException>(ar.Process);
+        }
+
+        public static void ReplaceCommandSwapsCommandWithSameName() {
+
+            Command cmd_verbose = new Command("verbose", "Verbose output");
+            cmd_verbose.SetFlag();
+
+            Args ar = new Args(new string[] { "-verbose", "input.txt" });
+            ar.AddCommand(new Command("verbose", "Verbose level"));
+            ar.ReplaceCommand(cmd_verbose);
+            ar.Process();
+
+            Check.Equal("input.txt", string.Join("|", ar.GetPositional()));
+        }
+
+        public static void ReplaceCommandThrowsWhenMissingOrNull() {
+
+            Args ar = new Args(new string[0]);
+
+            Check.Throws<ArgsException>(() => ar.ReplaceCommand(new Command("log", "Logging level")));
+            Check.Throws<ArgsException>(() => ar.ReplaceCommand(null));
+        }
+
+        public static void ConstructorTakesNullArgsAsEmpty() {
+
+            Args ar = new Args(null);
+            ar.Process();
+
+            Check.Equal(0, ar.GetPositional().Count);
+            Check.False(ar.HasArgument("input"));
+        }
+
+        public static void GetArgumentReadsLongAndDouble() {
+
+            Args ar = CreateProcessed("-big", "5000000000", "-ratio", "0.25");
+
+            Check.Equal(5000000000L, ar.GetArgument<long>("big"));
+            Check.Equal(0.25, ar.GetArgument<double>("ratio"));
+        }
+
+        public static void GetArgumentThrowsOnUnsupportedType() {
+
+            Args ar = CreateProcessed("-count", "5");
+
+            Check.Throws<ArgsException>(() => ar.GetArgument<decimal>("count"));
+            Check.Throws<ArgsException>(() => ar.GetArgument<decimal>("missing"));
+        }
+
+        public static void GetHelpShowsNamesWithFirstPrefix() {
+
+            Args ar = new Args(new string[0]);
+            ar.AddCommand(new Command("input", "Input file path", true));
+            ar.AddCommand(new Command("--log", "Logging level"));
+
+            string help = ar.GetHelp();
+
+            Check.True(help.Contains("  --input - Input file path"));
+            Check.True(help.Contains("  --log (optional) - Logging level"));
+        }
+
+        public static void GetHelpUsesOwnFirstPrefix() {
+
+            Args ar = new Args(new string[0], new string[] { "/", "-" });
+            ar.AddCommand(new Command("input", "Input file path", true));
+
+            Check.True(ar.GetHelp().Contains("  /input - Input file path"));
+        }
+
+        public static void PrintHelpWritesHelpToConsole() {
+
+            Args ar = new Args(new string[0]);
+            ar.AddCommand(new Command("input", "Input file path", true));
+
+            TextWriter original = Console.Out;
+            StringWriter writer = new StringWriter();
+            Console.SetOut(writer);
+
+            try {
+
+                ar.PrintHelp();
+
+            } finally {
+
+                Console.SetOut(original);
+            }
+
+            Check.Equal(ar.GetHelp(), writer.ToString());
+        }
+
+        public static void ConstructorWithoutParametersReadsProgramArguments() {
+
+            Args ar = new Args();
+            ar.Process();
+
+            Check.Equal(0, ar.GetPositional().Count);
+        }
+
+        public static void ConstructorTakesNullAsDefaultPrefixes() {
+
+            Args ar = new Args(new string[] { "--a", "1", "-b", "2", "/c", "3" }, null);
+            ar.Process();
+
+            Check.Equal("1|2|3", string.Join("|", new string[] { ar.GetArgument<string>("a"), ar.GetArgument<string>("b"), ar.GetArgument<string>("c") }));
+        }
+
+        public static void ConstructorTakesOwnPrefixes() {
+
+            Args ar = new Args(new string[] { "-path", "/tmp/x" }, new string[] { "-" });
+            ar.Process();
+
+            Check.Equal("/tmp/x", ar.GetArgument<string>("path"));
         }
 
         public static void ProcessIsCaseSensitiveByDefault() {

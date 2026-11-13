@@ -1,8 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Argumentos
 {
@@ -26,6 +24,9 @@ namespace Argumentos
 
         public void AddArgumentValueDesc(string argument, string desc) {
 
+            if (ArgsDesc.ContainsKey(argument))
+                throw new ArgsException($"Value \"{argument}\" is already documented for command \"{Name}\"");
+
             ArgsDesc.Add(argument, desc);
         }
 
@@ -44,20 +45,17 @@ namespace Argumentos
             return ArgsDesc.Keys.Any(k => string.Equals(k, value, comparison));
         }
 
-        public string PrintHelp() {
+        public string GetHelp(string shown_name = null) {
 
-            var output = Args.NewRow(
-                string.Format("- {2}{0} - {1}", 
-                Name, Description, Required ? "" : "(optional) ")
-            );
+            string output =
+                string.Format("  {0}{1} - {2}{3}", shown_name ?? Name, Required ? "" : " (optional)", Description, Environment.NewLine);
 
             if (ArgsDesc.Count > 0) {
 
-                // i know... i am lazy to look up the formating...
-                output += Args.NewRow("     Recognized values:");
+                output += "      Recognized values:" + Environment.NewLine;
                 foreach (var argsdesc in ArgsDesc) {
 
-                    output += Args.NewRow(string.Format("     - {0} -> {1}", argsdesc.Key, argsdesc.Value));
+                    output += string.Format("      - {0} -> {1}{2}", argsdesc.Key, argsdesc.Value, Environment.NewLine);
                 }
             }
 
